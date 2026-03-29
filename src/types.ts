@@ -41,7 +41,7 @@ export interface ClassInfo {
   line: number;
   methods: MethodInfo[];
   properties: PropertyInfo[];
-  extends?: string;
+  extends: string | null;
   implements?: string[];
   documentation?: string;
 }

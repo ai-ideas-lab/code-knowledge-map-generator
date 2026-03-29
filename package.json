@@ -4,6 +4,9 @@
   "description": "AI驱动的代码库知识地图生成器 - 帮助开发者快速理解代码架构",
   "main": "dist/index.js",
   "type": "module",
+  "bin": {
+    "code-knowledge-map": "./dist/index.js"
+  },
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "build": "tsc",
@@ -28,16 +31,21 @@
     "chalk": "^5.3.0",
     "commander": "^11.1.0",
     "fs-extra": "^11.1.1",
+    "glob": "^10.3.10",
     "inquirer": "^9.2.12",
+    "js-yaml": "^4.1.0",
+    "node-html-parser": "^6.1.13",
     "openai": "^4.26.0",
     "ora": "^7.0.1",
-    "tree-node-cli": "^2.0.0",
+    "tree-node-cli": "^1.6.0",
     "zod": "^3.22.4"
   },
   "devDependencies": {
     "@types/fs-extra": "^11.0.4",
+    "@types/glob": "^8.1.0",
     "@types/inquirer": "^9.0.7",
     "@types/jest": "^29.5.8",
+    "@types/js-yaml": "^4.0.6",
     "@types/node": "^20.10.5",
     "@typescript-eslint/eslint-plugin": "^6.14.0",
     "@typescript-eslint/parser": "^6.14.0",

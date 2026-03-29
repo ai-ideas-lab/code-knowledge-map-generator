@@ -18,23 +18,23 @@ export class CodeAnalyzer {
 
   async analyze(): Promise<AnalysisResult> {
     console.log('🔍 开始代码分析...');
-    
+
     const startTime = Date.now();
-    
+
     // 1. 扫描目录结构
     const structure = await this.scanStructure();
-    
+
     // 2. 分析依赖关系
     const dependencies = await this.analyzeDependencies(structure);
-    
+
     // 3. 计算代码指标
     const metrics = this.calculateMetrics(structure);
-    
+
     // 4. AI智能分析
     const aiAnalysis = await this.performAIAnalysis(structure, metrics);
-    
+
     const processingTime = Date.now() - startTime;
-    
+
     return {
       structure,
       dependencies,
@@ -48,11 +48,11 @@ export class CodeAnalyzer {
   private async scanStructure(): Promise<CodeStructure[]> {
     const structure: CodeStructure[] = [];
     const files = await this.scanFiles(this.config.targetPath);
-    
+
     for (const file of files) {
       const stat = await fs.stat(file);
       const relativePath = path.relative(this.config.targetPath, file);
-      
+
       if (stat.isDirectory()) {
         structure.push({
           name: path.basename(file),
@@ -69,7 +69,7 @@ export class CodeAnalyzer {
         const language = this.detectLanguage(file);
         const lines = content.split('\n').length;
         const dependencies = this.extractDependencies(content, language);
-        
+
         structure.push({
           name: path.basename(file),
           type: 'file',
@@ -84,22 +84,22 @@ export class CodeAnalyzer {
         });
       }
     }
-    
+
     return structure;
   }
 
   private async scanFiles(dir: string): Promise<string[]> {
-    const pattern = this.config.includeTests 
+    const pattern = this.config.includeTests
       ? '**/*.{js,ts,jsx,tsx,vue,py,java,go,rs,cpp,c,h}'
       : '**/*.{js,ts,jsx,tsx,vue,py,java,go,rs,cpp,c,h}';
-    
+
     const options = {
       cwd: dir,
       nodir: false,
       ignore: this.config.excludePatterns || ['node_modules', '.git', 'dist', 'build']
     };
-    
-    return glob.sync(pattern, options);
+
+    return await glob(pattern, options);
   }
 
   private detectLanguage(filePath: string): string {
@@ -118,18 +118,18 @@ export class CodeAnalyzer {
       '.c': 'c',
       '.h': 'c'
     };
-    
+
     return languageMap[ext] || 'unknown';
   }
 
   private extractDependencies(content: string, language: string): string[] {
     const dependencies: string[] = [];
-    
+
     if (language === 'javascript' || language === 'typescript') {
       // CommonJS/ES Modules imports
       const importMatches = content.match(/(?:import|require)\s*['"`]([^'"`]+)['"`]/g);
       if (importMatches) {
-        dependencies.push(...importMatches.map(match => 
+        dependencies.push(...importMatches.map(match =>
           match.match(/['"`]([^'"`]+)['"`]/)?.[1] || ''
         ).filter(Boolean));
       }
@@ -137,7 +137,7 @@ export class CodeAnalyzer {
       // Python imports
       const importMatches = content.match(/(?:import|from)\s+([^\s]+)/g);
       if (importMatches) {
-        dependencies.push(...importMatches.map(match => 
+        dependencies.push(...importMatches.map(match =>
           match.match(/(?:import|from)\s+([^\s]+)/)?.[1] || ''
         ).filter(Boolean));
       }
@@ -145,53 +145,126 @@ export class CodeAnalyzer {
       // Java imports
       const importMatches = content.match(/import\s+([^\s;]+)/g);
       if (importMatches) {
-        dependencies.push(...importMatches.map(match => 
+        dependencies.push(...importMatches.map(match =>
           match.match(/import\s+([^\s;]+)/)?.[1] || ''
         ).filter(Boolean));
       }
     }
-    
+
     return dependencies.filter(dep => !dep.startsWith('./') && !dep.startsWith('../'));
   }
 
   private extractFunctions(content: string, language: string) {
-    // 简化的函数提取，实际项目中应该使用更复杂的解析器
     const functions = [];
-    const functionRegex = /(?:function|def|fn)\s+([^\s(]+)/g;
     let match;
-    
-    while ((match = functionRegex.exec(content)) !== null) {
-      functions.push({
-        name: match[1],
-        line: this.getLineNumber(content, match.index),
-        parameters: [],
-        returnType: 'unknown',
-        complexity: 1,
-        isAsync: content.includes('async') && content.substring(0, match.index).includes('async'),
-        isExported: content.includes('export') && content.substring(0, match.index).includes('export'),
-        documentation: this.extractDocumentation(content, match.index)
-      });
+
+    // 语言特定的函数提取
+    if (language === 'javascript' || language === 'typescript') {
+      // JS/TS: function declaration, function expression, arrow function, method
+      const functionRegex = /(?:function\s+([^\s(]+)\s*\([^)]*\)\s*{)|(?:([^\s(]+)\s*=\s*(?:async\s+)?(?:function|\([^)]*\)\s*=>|=>))/g;
+
+      while ((match = functionRegex.exec(content)) !== null) {
+        const name = match[1] || match[2];
+        if (name && !name.startsWith('(')) { // 排除箭头函数无名情况
+          functions.push({
+            name,
+            line: this.getLineNumber(content, match.index),
+            parameters: [], // 简化版，实际应该解析参数
+            returnType: 'unknown',
+            complexity: this.calculateComplexity(content, match.index),
+            isAsync: content.includes('async', match.index - 100),
+            isExported: this.isExported(content, match.index),
+            documentation: this.extractDocumentation(content, match.index)
+          });
+        }
+      }
+    } else if (language === 'python') {
+      // Python: def statements
+      const functionRegex = /def\s+([^\s(]+)\s*\([^)]*\)\s*:/g;
+
+      while ((match = functionRegex.exec(content)) !== null) {
+        functions.push({
+          name: match[1],
+          line: this.getLineNumber(content, match.index),
+          parameters: [],
+          returnType: 'unknown',
+          complexity: 1,
+          isAsync: content.includes('async', match.index - 100),
+          isExported: this.isExported(content, match.index),
+          documentation: this.extractDocumentation(content, match.index)
+        });
+      }
+    } else if (language === 'java') {
+      // Java: method declarations
+      const functionRegex = /(?:public|private|protected)?\s*(?:static\s+)?(?:async\s+)?(?:[\w<>]+\s+)?([^\s(]+)\s*\([^)]*\)\s*(?:throws\s+[\w\s,]+)?\s*{/g;
+
+      while ((match = functionRegex.exec(content)) !== null) {
+        functions.push({
+          name: match[1],
+          line: this.getLineNumber(content, match.index),
+          parameters: [],
+          returnType: 'unknown',
+          complexity: this.calculateComplexity(content, match.index),
+          isAsync: content.includes('async', match.index - 100),
+          isExported: this.isExported(content, match.index),
+          documentation: this.extractDocumentation(content, match.index)
+        });
+      }
     }
-    
+
     return functions;
   }
 
   private extractClasses(content: string, language: string) {
-    // 简化的类提取
     const classes = [];
-    const classRegex = /(?:class|struct)\s+([^\s:]+)/g;
     let match;
     
-    while ((match = classRegex.exec(content)) !== null) {
-      classes.push({
-        name: match[1],
-        line: this.getLineNumber(content, match.index),
-        methods: [],
-        properties: [],
-        extends: null,
-        implements: [],
-        documentation: this.extractDocumentation(content, match.index)
-      });
+    // 语言特定的类提取
+    if (language === 'javascript' || language === 'typescript') {
+      // JS/TS: class declarations
+      const classRegex = /(?:export\s+)?(?:abstract\s+)?class\s+([^\s{]+)/g;
+      
+      while ((match = classRegex.exec(content)) !== null) {
+        classes.push({
+          name: match[1],
+          line: this.getLineNumber(content, match.index),
+          methods: [], // 简化版，实际应该提取方法
+          properties: [], // 简化版，实际应该提取属性
+          extends: this.extractExtends(content, match.index),
+          implements: [], // 简化版
+          documentation: this.extractDocumentation(content, match.index)
+        });
+      }
+    } else if (language === 'python') {
+      // Python: class declarations
+      const classRegex = /class\s+([^\s(:]+)/g;
+      
+      while ((match = classRegex.exec(content)) !== null) {
+        classes.push({
+          name: match[1],
+          line: this.getLineNumber(content, match.index),
+          methods: [],
+          properties: [],
+          extends: this.extractExtends(content, match.index),
+          implements: [],
+          documentation: this.extractDocumentation(content, match.index)
+        });
+      }
+    } else if (language === 'java') {
+      // Java: class declarations
+      const classRegex = /(?:public|private|protected)?\s*class\s+([^\s{]+)/g;
+      
+      while ((match = classRegex.exec(content)) !== null) {
+        classes.push({
+          name: match[1],
+          line: this.getLineNumber(content, match.index),
+          methods: [],
+          properties: [],
+          extends: this.extractExtends(content, match.index),
+          implements: [],
+          documentation: this.extractDocumentation(content, match.index)
+        });
+      }
     }
     
     return classes;
@@ -200,7 +273,7 @@ export class CodeAnalyzer {
   private extractDocumentation(content: string, position: number): string {
     const linesBefore = content.substring(0, position).split('\n');
     const docComments = [];
-    
+
     // 向上查找文档注释
     for (let i = linesBefore.length - 1; i >= Math.max(0, linesBefore.length - 10); i--) {
       const line = linesBefore[i].trim();
@@ -210,7 +283,7 @@ export class CodeAnalyzer {
         break;
       }
     }
-    
+
     return docComments.join('\n');
   }
 
@@ -218,17 +291,36 @@ export class CodeAnalyzer {
     return content.substring(0, position).split('\n').length;
   }
 
+  private calculateComplexity(content: string, position: number): number {
+    // 简化的复杂度计算，统计控制结构
+    const localContent = content.substring(0, position + 100);
+    const controlStructures = (localContent.match(/\b(if|for|while|switch|case|catch|try)\b/g) || []).length;
+    return Math.max(1, controlStructures);
+  }
+
+  private isExported(content: string, position: number): boolean {
+    const localContent = content.substring(Math.max(0, position - 100), position);
+    return localContent.includes('export') || localContent.includes('module.exports');
+  }
+
+  private extractExtends(content: string, position: number): string | null {
+    const localContent = content.substring(position, position + 200);
+    const extendsMatch = localContent.match(/extends\s+([^\s{]+)/);
+    return extendsMatch ? extendsMatch[1] : null;
+  }
+
   private async analyzeDependencies(structure: CodeStructure[]): Promise<DependencyAnalysis> {
     const allDependencies = new Set<string>();
     const directDependencies = new Set<string>();
     const dependencyGraph: Record<string, string[]> = {};
     const circularDependencies: string[][] = [];
-    
+
     // 收集所有依赖
     structure.filter(item => item.type === 'file').forEach(file => {
-      allDependencies.add(...file.dependencies);
-      dependencyGraph[file.path] = file.dependencies;
-      
+      const validDependencies = file.dependencies.filter(dep => dep && typeof dep === 'string');
+      validDependencies.forEach(dep => allDependencies.add(dep));
+      dependencyGraph[file.path] = validDependencies;
+
       // 识别直接依赖（项目内部依赖）
       file.dependencies.forEach(dep => {
         if (!dep.startsWith('@') && !dep.startsWith('.') && !dep.startsWith('http')) {
@@ -236,11 +328,11 @@ export class CodeAnalyzer {
         }
       });
     });
-    
+
     // 检测循环依赖（简化版）
     const visited = new Set<string>();
     const recursionStack = new Set<string>();
-    
+
     const detectCycle = (node: string, path: string[] = []) => {
       if (recursionStack.has(node)) {
         const cycleStart = path.indexOf(node);
@@ -249,23 +341,23 @@ export class CodeAnalyzer {
         }
         return;
       }
-      
+
       if (visited.has(node)) return;
-      
+
       visited.add(node);
       recursionStack.add(node);
-      
+
       const deps = dependencyGraph[node] || [];
       deps.forEach(dep => detectCycle(dep, [...path, node]));
-      
+
       recursionStack.delete(node);
     };
-    
+
     Object.keys(dependencyGraph).forEach(node => detectCycle(node));
-    
+
     // 检查过时的依赖（简化版）
     const outdatedDependencies = await this.checkOutdatedDependencies(Array.from(directDependencies));
-    
+
     return {
       totalDependencies: allDependencies.size,
       directDependencies: Array.from(directDependencies),
@@ -279,7 +371,7 @@ export class CodeAnalyzer {
   private async checkOutdatedDependencies(dependencies: string[]): Promise<PackageInfo[]> {
     // 简化的过时依赖检查，实际应该使用npm outdated或类似工具
     const outdated: PackageInfo[] = [];
-    
+
     for (const dep of dependencies) {
       try {
         // 这里应该调用实际的包管理器API
@@ -294,7 +386,7 @@ export class CodeAnalyzer {
         // 忽略检查失败的依赖
       }
     }
-    
+
     return outdated;
   }
 
@@ -303,16 +395,16 @@ export class CodeAnalyzer {
     const totalLines = structure.reduce((sum, item) => sum + item.lines, 0);
     const totalFunctions = structure.reduce((sum, item) => sum + (item.functions?.length || 0), 0);
     const totalClasses = structure.reduce((sum, item) => sum + (item.classes?.length || 0), 0);
-    
+
     // 计算平均复杂度
     const allComplexities = structure
       .flatMap(item => item.functions || [])
       .map(func => func?.complexity || 1);
-    
-    const averageComplexity = allComplexities.length > 0 
-      ? allComplexities.reduce((sum, comp) => sum + comp, 0) / allComplexities.length 
+
+    const averageComplexity = allComplexities.length > 0
+      ? allComplexities.reduce((sum, comp) => sum + comp, 0) / allComplexities.length
       : 1;
-    
+
     // 找出最大的文件
     const largestFiles = structure
       .filter(item => item.type === 'file')
@@ -323,10 +415,10 @@ export class CodeAnalyzer {
         size: file.size,
         lines: file.lines
       }));
-    
+
     // 找出最复杂的函数
     const mostComplexFunctions = structure
-      .flatMap(item => 
+      .flatMap(item =>
         (item.functions || []).map(func => ({
           name: func.name,
           complexity: func.complexity,
@@ -335,7 +427,7 @@ export class CodeAnalyzer {
       )
       .sort((a, b) => b.complexity - a.complexity)
       .slice(0, 10);
-    
+
     return {
       totalFiles,
       totalLines,
@@ -353,7 +445,7 @@ export class CodeAnalyzer {
       const openai = new OpenAI({
         apiKey: process.env.OPENAI_API_KEY
       });
-      
+
       const prompt = `
 你是一位资深的代码架构专家。请基于以下代码库信息，提供深入的分析和洞察：
 
@@ -394,8 +486,8 @@ ${this.getArchitectureSummary(structure)}
         max_tokens: 1000
       });
 
-      const content = response.choices[0].message.content;
-      
+      const content = response.choices[0]?.message?.content || '';
+
       try {
         const parsed = JSON.parse(content);
         return {
@@ -408,10 +500,10 @@ ${this.getArchitectureSummary(structure)}
         return {
           insights: ['代码库分析完成'],
           recommendations: ['继续优化代码结构'],
-          summary: content.substring(0, 200) + '...'
+          summary: (content || '').substring(0, 200) + '...'
         };
       }
-      
+
     } catch (error) {
       console.warn('AI分析失败，使用基础分析:', error);
       return {
@@ -432,13 +524,13 @@ ${this.getArchitectureSummary(structure)}
 
   private getLanguageDistribution(structure: CodeStructure[]): string {
     const languageCount: Record<string, number> = {};
-    
+
     structure.forEach(item => {
       if (item.type === 'file') {
         languageCount[item.language] = (languageCount[item.language] || 0) + 1;
       }
     });
-    
+
     return Object.entries(languageCount)
       .map(([lang, count]) => `  - ${lang}: ${count}个文件`)
       .join('\n');
@@ -447,7 +539,7 @@ ${this.getArchitectureSummary(structure)}
   private getArchitectureSummary(structure: CodeStructure[]): string {
     const directories = structure.filter(item => item.type === 'directory');
     const files = structure.filter(item => item.type === 'file');
-    
+
     return [
       `目录结构: ${directories.length}个目录`,
       `文件分布: ${files.length}个代码文件`,
