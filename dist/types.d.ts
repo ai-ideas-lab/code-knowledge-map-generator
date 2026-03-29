@@ -1,12 +1,13 @@
 export interface AnalysisConfig {
-    targetPath: string;
-    outputPath: string;
-    format: 'markdown' | 'json' | 'html';
+    projectPath: string;
+    outputPath?: string;
+    format?: 'markdown' | 'json' | 'html';
     includeTests: boolean;
     excludePatterns?: string[];
-    aiModel?: string;
-    analyzeDepth?: number;
+    depth?: number;
     focusAreas?: string[];
+    aiModel?: string;
+    maxFileSize?: number;
 }
 export interface CodeStructure {
     name: string;
@@ -69,6 +70,30 @@ export interface AnalysisResult {
     insights: string[];
     recommendations: string[];
     aiSummary: string;
+    additionalData?: {
+        qualityScore?: {
+            overallScore: number;
+            breakdown: {
+                architecture: number;
+                maintainability: number;
+                performance: number;
+                security: number;
+                testing: number;
+            };
+            strengths: string[];
+            weaknesses: string[];
+        };
+        refactoringSuggestions?: {
+            immediateActions: string[];
+            longTermGoals: string[];
+            estimatedEffort: {
+                immediate: 'low' | 'medium' | 'high';
+                longTerm: 'low' | 'medium' | 'high';
+            };
+        };
+        riskFactors?: string[];
+        improvementSuggestions?: string[];
+    };
 }
 export interface DependencyAnalysis {
     totalDependencies: number;
@@ -117,5 +142,13 @@ export interface AnalysisFocus {
     performance: boolean;
     security: boolean;
     testing: boolean;
+}
+export interface DocumentGeneratorConfig {
+    outputDir: string;
+    format: 'markdown' | 'json' | 'html';
+    includeMetrics: boolean;
+    includeInsights: boolean;
+    maxDepth?: number;
+    theme?: 'light' | 'dark';
 }
 //# sourceMappingURL=types.d.ts.map

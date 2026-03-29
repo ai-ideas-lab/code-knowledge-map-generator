@@ -18,6 +18,10 @@ export declare class CodeAnalyzer {
     private checkOutdatedDependencies;
     private calculateMetrics;
     private performAIAnalysis;
+    /**
+     * 基础AI分析（备用方案）
+     */
+    private performBasicAIAnalysis;
     private getLanguageDistribution;
     private getArchitectureSummary;
 }

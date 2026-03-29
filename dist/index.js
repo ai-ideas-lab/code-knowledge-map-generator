@@ -1,21 +1,34 @@
-import { CodeAnalyzer } from './analyzer';
-import { DocumentGenerator } from './generator';
+import { CodeAnalyzer } from './analyzer.js';
+import { DocumentGenerator } from './generator.js';
 export class CodeKnowledgeMapGenerator {
     config;
     analyzer;
-    generator;
+    generator = null;
     constructor(config) {
         this.config = config;
         this.analyzer = new CodeAnalyzer(config);
-        this.generator = new DocumentGenerator(config, {}); // 临时类型，后面会替换
+        this.generator = null; // 初始化为null，在generate时创建
     }
     async generate() {
         console.log('🚀 开始生成代码库知识地图...');
         // 1. 分析代码库
         const analysisResult = await this.analyzer.analyze();
-        // 2. 设置分析结果到生成器
-        this.generator = new DocumentGenerator(this.config, analysisResult);
+        // 2. 创建生成器配置
+        const generatorConfig = {
+            outputDir: this.config.projectPath + '/output',
+            format: this.config.depth ? 'markdown' : 'markdown',
+            includeMetrics: true,
+            includeInsights: true,
+            maxDepth: this.config.depth || 3
+        };
         // 3. 生成文档
+        const docGeneratorConfig = {
+            ...this.config,
+            includeMetrics: true,
+            includeInsights: true,
+            maxDepth: this.config.depth || 3
+        };
+        this.generator = new DocumentGenerator(docGeneratorConfig, analysisResult);
         const result = await this.generator.generate();
         return result;
     }
@@ -33,4 +46,5 @@ export class CodeKnowledgeMapGenerator {
         return await tempGenerator.generate();
     }
 }
+export { CodeKnowledgeMapGenerator as default };
 //# sourceMappingURL=index.js.map

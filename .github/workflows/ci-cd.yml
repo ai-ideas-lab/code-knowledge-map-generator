@@ -1,0 +1,250 @@
+name: Code Knowledge Map Generator CI/CD
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  NODE_VERSION: '22'
+  NPM_VERSION: '10'
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Run type checking
+      run: npm run type-check
+      
+    - name: Run linting
+      run: npm run lint
+      
+    - name: Run unit tests
+      run: npm run test:coverage
+      
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage/lcov.info
+        flags: unittests
+        name: codecov-umbrella
+
+  build:
+    name: Build Application
+    runs-on: ubuntu-latest
+    needs: test
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Build application
+      run: npm run build
+      
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: dist
+        path: dist/
+        retention-days: 30
+
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: test
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Run npm audit
+      run: npm audit --audit-level moderate
+      
+    - name: Run security check with snyk
+      uses: snyk/actions/node@master
+      env:
+        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+      with:
+        command: test
+        args: --severity-threshold=high
+        command: monitor
+
+  validate:
+    name: Validate Configuration
+    runs-on: ubuntu-latest
+    needs: [test, build]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Validate package.json
+      run: npm run validate-package
+      
+    - name: Check configuration files
+      run: npm run validate-config
+      
+    - name: Test CLI functionality
+      run: |
+        npm run build
+        npx dist/cli.js --help
+        npx dist/cli.js generate --help
+
+  deploy-npm:
+    name: Deploy to NPM
+    runs-on: ubuntu-latest
+    needs: [test, build, validate]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        registry-url: 'https://registry.npmjs.org'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Build application
+      run: npm run build
+      
+    - name: Publish to NPM
+      run: npm publish
+      env:
+        NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  deploy-github:
+    name: Deploy GitHub Release
+    runs-on: ubuntu-latest
+    needs: [test, build, validate]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Build application
+      run: npm run build
+      
+    - name: Create Release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: v${{ github.run_number }}
+        release_name: Release ${{ github.run_number }}
+        body: |
+          ## What's Changed
+          
+          This release includes automated CI/CD pipeline updates.
+          
+          ### Changes in this Release
+          - Automated testing and validation
+          - Security scanning
+          - Performance optimization
+          - Enhanced AI analysis features
+          
+          ### Installation
+          ```bash
+          npm install -g code-knowledge-map-generator
+          ```
+          
+          ### Usage
+          ```bash
+          code-knowledge-map generate /path/to/project
+          ```
+          
+          ### Features
+          - AI-powered code analysis
+          - Multiple output formats (Markdown, JSON, HTML)
+          - Performance optimization suggestions
+          - Error handling and recovery
+          - Comprehensive test coverage
+          
+          For more information, see the [README](./README.md).
+          
+          ## Contributing
+          
+          We welcome contributions! Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
+          
+          ## License
+          
+          This project is licensed under the MIT License - see the [LICENSE](./LICENSE) file for details.
+        draft: false
+        prerelease: false
+
+  notify:
+    name: Deployment Notification
+    runs-on: ubuntu-latest
+    needs: [deploy-npm, deploy-github]
+    if: always() && (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    
+    steps:
+    - name: Notify success
+      if: needs.deploy-npm.result == 'success' && needs.deploy-github.result == 'success'
+      run: |
+        echo "🎉 Deployment successful! v${{ github.run_number }} has been released."
+        
+    - name: Notify failure
+      if: needs.deploy-npm.result != 'success' || needs.deploy-github.result != 'success'
+      run: |
+        echo "❌ Deployment failed. Please check the logs for details."
+        
+    - name: Comment on PR
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: 'CI/CD pipeline completed. Check the actions tab for details.'
+          })

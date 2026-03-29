@@ -1,0 +1,18 @@
+{
+  "name": "code-knowledge-map-generator-simple",
+  "version": "1.0.0",
+  "type": "commonjs",
+  "main": "dist/index.js",
+  "scripts": {
+    "start": "node dist/cli.js",
+    "test": "node test-cli.cjs"
+  },
+  "dependencies": {
+    "commander": "^11.1.0",
+    "fs-extra": "^11.1.1",
+    "glob": "^10.3.10",
+    "js-yaml": "^4.1.0",
+    "openai": "^4.26.0",
+    "ora": "^7.0.1"
+  }
+}

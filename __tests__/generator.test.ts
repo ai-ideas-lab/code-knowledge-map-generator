@@ -1,95 +1,152 @@
-import { CodeKnowledgeMapGenerator } from '../src/index';
-import { AnalysisConfig } from '../src/types';
+import { describe, it, expect, beforeAll, afterEach } from 'jest';
+import { DocumentGenerator } from '../src/generator.js';
+import { AnalysisResult } from '../src/types.js';
 import fs from 'fs-extra';
 import path from 'path';
 
-describe('CodeKnowledgeMapGenerator', () => {
-  const testConfig: AnalysisConfig = {
-    targetPath: './test-project',
-    outputPath: './test-output',
-    format: 'markdown',
-    includeTests: false,
-    excludePatterns: ['node_modules', '.git'],
-    aiModel: 'gpt-4'
-  };
+describe('DocumentGenerator', () => {
+  let testDir: string;
+  let outputDir: string;
+  let generator: DocumentGenerator;
+  let mockResult: AnalysisResult;
 
-  beforeEach(async () => {
-    // 创建测试项目
-    const testProjectPath = testConfig.targetPath;
-    await fs.ensureDir(testProjectPath);
-    
-    // 创建测试文件
-    await fs.writeFile(
-      path.join(testProjectPath, 'index.js'),
-      `
-// 示例JavaScript文件
-function greet(name) {
-  return "Hello, " + name + "!";
-}
-
-class Greeter {
-  constructor(name) {
-    this.name = name;
-  }
-  
-  sayHello() {
-    return greet(this.name);
-  }
-}
-
-export default Greeter;
-`
-    );
-    
-    await fs.writeFile(
-      path.join(testProjectPath, 'package.json'),
-      JSON.stringify({
-        name: 'test-project',
-        version: '1.0.0',
-        dependencies: {
-          'lodash': '^4.17.21'
-        }
-      }, null, 2)
-    );
+  beforeAll(async () => {
+    testDir = path.join(__dirname, 'test-output');
+    outputDir = path.join(testDir, 'output');
+    await fs.ensureDir(outputDir);
   });
 
   afterEach(async () => {
-    // 清理测试文件
-    await fs.remove(testConfig.targetPath);
-    await fs.remove(testConfig.outputPath);
+    await fs.remove(testDir);
   });
 
-  test('应该创建实例', () => {
-    const generator = new CodeKnowledgeMapGenerator(testConfig);
-    expect(generator).toBeDefined();
+  beforeEach(() => {
+    mockResult = {
+      structure: [
+        {
+          type: 'file',
+          name: 'index.ts',
+          path: '/src/index.ts',
+          size: 1024,
+          language: 'typescript',
+          lines: 50,
+          functions: 2,
+          complexity: 3
+        },
+        {
+          type: 'directory',
+          name: 'src',
+          path: '/src',
+          size: 2048,
+          files: 3,
+          subdirectories: 1
+        }
+      ],
+      dependencies: {
+        directDependencies: [
+          'lodash'
+        ],
+        indirectDependencies: [],
+        circular: [],
+        outdated: []
+      },
+      metrics: {
+        totalFiles: 10,
+        totalLines: 500,
+        averageComplexity: 2.5,
+        largestFiles: [{ path: 'index.ts', size: 1024, lines: 50 }],
+        averageFileSize: 512
+      },
+      insights: [
+        '项目结构清晰，模块化程度良好',
+        '依赖管理规范，无循环依赖'
+      ],
+      recommendations: [
+        '考虑添加TypeScript配置文件',
+        '建议增加单元测试覆盖率'
+      ],
+      aiSummary: '这是一个结构良好的TypeScript项目，具有清晰的代码组织。'
+    };
+
+    generator = new DocumentGenerator({ projectPath: testDir, outputPath: testDir, 
+      projectPath: testDir,
+      outputPath: outputDir,
+      format: 'markdown'
+    }, mockResult);
   });
 
-  test('应该能够生成知识地图', async () => {
-    const generator = new CodeKnowledgeMapGenerator(testConfig);
-    const result = await generator.generate();
+  it('should generate markdown document correctly', async () => {
+    await generator.generate();
     
-    expect(result).toBeDefined();
-    expect(result.format).toBe('markdown');
-    expect(result.stats.totalFiles).toBeGreaterThan(0);
-    expect(result.generatedFiles).toContain(path.join(testConfig.outputPath, 'README.md'));
+    const mdFile = path.join(outputDir, 'README.md');
+    expect(await fs.pathExists(mdFile)).toBe(true);
+    
+    const content = await fs.readFile(mdFile, 'utf8');
+    expect(content).toContain('# Code Knowledge Map');
+    expect(content).toContain('## 项目统计');
+    expect(content).toContain('## AI洞察');
   });
 
-  test('应该能够进行分析', async () => {
-    const generator = new CodeKnowledgeMapGenerator(testConfig);
-    const analysis = await generator.analyze();
+  it('should generate JSON document correctly', async () => {
+    await generator.generate();
     
-    expect(analysis).toBeDefined();
-    expect(analysis.structure).toBeDefined();
-    expect(analysis.dependencies).toBeDefined();
-    expect(analysis.metrics).toBeDefined();
+    const jsonFile = path.join(outputDir, 'knowledge-map.json');
+    expect(await fs.pathExists(jsonFile)).toBe(true);
+    
+    const content = await fs.readFile(jsonFile, 'utf8');
+    const data = JSON.parse(content);
+    expect(data).toHaveProperty('metadata');
+    expect(data).toHaveProperty('summary');
+    expect(data).toHaveProperty('structure');
   });
 
-  test('应该支持重点分析', async () => {
-    const generator = new CodeKnowledgeMapGenerator(testConfig);
-    const analysis = await generator.analyzeWithFocus(['architecture', 'dependencies']);
+  it('should generate HTML document correctly', async () => {
+    await generator.generate();
     
-    expect(analysis).toBeDefined();
-    // 重点分析应该返回特殊的结果
-    expect(analysis.structure).toBeDefined();
+    const htmlFile = path.join(outputDir, 'index.html');
+    expect(await fs.pathExists(htmlFile)).toBe(true);
+    
+    const content = await fs.readFile(htmlFile, 'utf8');
+    expect(content).toContain('<!DOCTYPE html>');
+    expect(content).toContain('<title>Code Knowledge Map</title>');
+  });
+
+  it('should handle output directory creation', async () => {
+    const newGenerator = new DocumentGenerator({ projectPath: testDir, outputPath: testDir, 
+      outputDir: path.join(testDir, 'new-dir'),
+      format: 'markdown'
+    });
+    
+    await generator.generate();');
+    expect(await fs.pathExists(path.join(testDir, 'new-dir'))).toBe(true);
+  });
+
+  it('should handle invalid format gracefully', async () => {
+    const invalidGenerator = new DocumentGenerator({ projectPath: testDir, outputPath: testDir, 
+      outputDir: outputDir,
+      format: 'invalid' as any
+    });
+    
+    // 应该处理无效格式或抛出错误
+    await generator.generate();
+      .rejects.toThrow();
+  });
+
+  it('should generate with custom configuration', async () => {
+    const customGenerator = new DocumentGenerator({ projectPath: testDir, outputPath: testDir, 
+      outputDir: outputDir,
+      format: 'markdown',
+      includeMetrics: true,
+      includeInsights: true,
+      maxDepth: 5,
+      theme: 'dark'
+    });
+    
+    await generator.generate();');
+    
+    const mdFile = path.join(outputDir, 'README.md');
+    const content = await fs.readFile(mdFile, 'utf8');
+    expect(content).toContain('## 项目统计');
+    expect(content).toContain('## AI洞察');
   });
 });

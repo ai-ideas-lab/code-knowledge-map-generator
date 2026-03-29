@@ -8,12 +8,13 @@ export class DocumentGenerator {
         this.analysisResult = analysisResult;
     }
     async generate() {
-        console.log(`📄 生成${this.config.format.toUpperCase()}格式文档...`);
+        const format = this.config.format || "markdown" || 'markdown';
+        console.log(`📄 生成${format.toUpperCase()}格式文档...`);
         const startTime = Date.now();
         const generatedFiles = [];
         // 确保输出目录存在
-        await fs.ensureDir(this.config.outputPath);
-        switch (this.config.format) {
+        await fs.ensureDir(this.config.outputPath || "./knowledge-map");
+        switch (format) {
             case 'markdown':
                 generatedFiles.push(...await this.generateMarkdown());
                 break;
@@ -24,12 +25,12 @@ export class DocumentGenerator {
                 generatedFiles.push(...await this.generateHTML());
                 break;
             default:
-                throw new Error(`不支持的格式: ${this.config.format}`);
+                throw new Error(`不支持的格式: ${this.config.format || "markdown"}`);
         }
         const processingTime = Date.now() - startTime;
         return {
-            outputPath: this.config.outputPath,
-            format: this.config.format,
+            outputPath: this.config.outputPath || "./knowledge-map",
+            format: this.config.format || "markdown",
             stats: this.analysisResult.metrics,
             insights: this.analysisResult.insights,
             generatedFiles,
@@ -82,19 +83,19 @@ ${this.analysisResult.aiSummary}
 ---
 *由Code Knowledge Map Generator生成*
 `;
-        const mainPath = path.join(this.config.outputPath, 'README.md');
+        const mainPath = path.join(this.config.outputPath || "./knowledge-map", 'README.md');
         await fs.writeFile(mainPath, mainDoc);
         files.push(mainPath);
         // 生成详细的结构文档
-        const structurePath = path.join(this.config.outputPath, 'structure.md');
+        const structurePath = path.join(this.config.outputPath || "./knowledge-map", 'structure.md');
         await fs.writeFile(structurePath, this.generateDetailedStructureMarkdown());
         files.push(structurePath);
         // 生成依赖文档
-        const dependencyPath = path.join(this.config.outputPath, 'dependencies.md');
+        const dependencyPath = path.join(this.config.outputPath || "./knowledge-map", 'dependencies.md');
         await fs.writeFile(dependencyPath, this.generateDetailedDependencyMarkdown());
         files.push(dependencyPath);
         // 生成质量报告
-        const qualityPath = path.join(this.config.outputPath, 'quality-report.md');
+        const qualityPath = path.join(this.config.outputPath || "./knowledge-map", 'quality-report.md');
         await fs.writeFile(qualityPath, this.generateQualityReportMarkdown());
         files.push(qualityPath);
         return files;
@@ -304,8 +305,8 @@ ${this.analysisResult.aiSummary}
             metadata: {
                 generatedAt: new Date().toISOString(),
                 format: 'json',
-                targetPath: this.config.targetPath,
-                outputPath: this.config.outputPath
+                projectPath: this.config.projectPath,
+                outputPath: this.config.outputPath || "./knowledge-map"
             },
             summary: {
                 totalFiles: this.analysisResult.metrics.totalFiles,
@@ -321,18 +322,18 @@ ${this.analysisResult.aiSummary}
             dependencies: this.analysisResult.dependencies,
             metrics: this.analysisResult.metrics
         };
-        const mainPath = path.join(this.config.outputPath, 'knowledge-map.json');
+        const mainPath = path.join(this.config.outputPath || "./knowledge-map", 'knowledge-map.json');
         await fs.writeFile(mainPath, JSON.stringify(mainData, null, 2));
         files.push(mainPath);
         // 生成结构数据
-        const structurePath = path.join(this.config.outputPath, 'structure.json');
+        const structurePath = path.join(this.config.outputPath || "./knowledge-map", 'structure.json');
         await fs.writeFile(structurePath, JSON.stringify({
             structure: this.analysisResult.structure,
             metrics: this.analysisResult.metrics
         }, null, 2));
         files.push(structurePath);
         // 生成依赖数据
-        const dependencyPath = path.join(this.config.outputPath, 'dependencies.json');
+        const dependencyPath = path.join(this.config.outputPath || "./knowledge-map", 'dependencies.json');
         await fs.writeFile(dependencyPath, JSON.stringify({
             dependencies: this.analysisResult.dependencies,
             circularDependencies: this.analysisResult.dependencies.circularDependencies,
@@ -429,7 +430,7 @@ ${this.analysisResult.aiSummary}
     </div>
 </body>
 </html>`;
-        const mainPath = path.join(this.config.outputPath, 'index.html');
+        const mainPath = path.join(this.config.outputPath || "./knowledge-map", 'index.html');
         await fs.writeFile(mainPath, htmlTemplate);
         files.push(mainPath);
         return files;

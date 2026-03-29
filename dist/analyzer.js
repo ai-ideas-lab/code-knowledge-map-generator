@@ -3,6 +3,7 @@ import path from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { glob } from 'glob';
+import { AIAnalyzer } from './ai-analyzer.js';
 const execAsync = promisify(exec);
 export class CodeAnalyzer {
     config;
@@ -12,30 +13,63 @@ export class CodeAnalyzer {
     async analyze() {
         console.log('🔍 开始代码分析...');
         const startTime = Date.now();
-        // 1. 扫描目录结构
-        const structure = await this.scanStructure();
-        // 2. 分析依赖关系
-        const dependencies = await this.analyzeDependencies(structure);
-        // 3. 计算代码指标
-        const metrics = this.calculateMetrics(structure);
-        // 4. AI智能分析
-        const aiAnalysis = await this.performAIAnalysis(structure, metrics);
-        const processingTime = Date.now() - startTime;
-        return {
-            structure,
-            dependencies,
-            metrics,
-            insights: aiAnalysis.insights,
-            recommendations: aiAnalysis.recommendations,
-            aiSummary: aiAnalysis.summary
-        };
+        try {
+            // 1. 扫描目录结构
+            const structure = await this.scanStructure();
+            // 2. 分析依赖关系
+            const dependencies = await this.analyzeDependencies(structure);
+            // 3. 计算代码指标
+            const metrics = this.calculateMetrics(structure);
+            // 4. AI智能分析
+            const aiAnalysis = await this.performAIAnalysis(structure, metrics);
+            const processingTime = Date.now() - startTime;
+            return {
+                structure,
+                dependencies,
+                metrics,
+                insights: aiAnalysis.insights,
+                recommendations: aiAnalysis.recommendations,
+                aiSummary: aiAnalysis.summary
+            };
+        }
+        catch (error) {
+            console.warn('分析过程中出现错误:', error);
+            // 返回基础分析结果
+            const structure = [];
+            const dependencies = {
+                totalDependencies: 0,
+                directDependencies: [],
+                indirectDependencies: [],
+                dependencyGraph: {},
+                circularDependencies: []
+            };
+            const metrics = {
+                totalFiles: 0,
+                totalLines: 0,
+                totalFunctions: 0,
+                totalClasses: 0,
+                averageComplexity: 0,
+                largestFiles: [],
+                mostComplexFunctions: []
+            };
+            return {
+                structure,
+                dependencies,
+                metrics,
+                insights: ['分析完成，但遇到了一些错误'],
+                recommendations: ['请检查目标目录是否存在且包含代码文件'],
+                aiSummary: '基础分析完成，建议提供有效的代码目录。'
+            };
+        }
     }
     async scanStructure() {
         const structure = [];
-        const files = await this.scanFiles(this.config.targetPath);
+        const files = await this.scanFiles(this.config.projectPath);
         for (const file of files) {
-            const stat = await fs.stat(file);
-            const relativePath = path.relative(this.config.targetPath, file);
+            const stat = await fs.stat(file).catch(() => null);
+            if (!stat)
+                continue;
+            const relativePath = path.relative(this.config.projectPath, file);
             if (stat.isDirectory()) {
                 structure.push({
                     name: path.basename(file),
@@ -49,22 +83,40 @@ export class CodeAnalyzer {
                 });
             }
             else {
-                const content = await fs.readFile(file, 'utf-8');
-                const language = this.detectLanguage(file);
-                const lines = content.split('\n').length;
-                const dependencies = this.extractDependencies(content, language);
-                structure.push({
-                    name: path.basename(file),
-                    type: 'file',
-                    path: relativePath,
-                    size: stat.size,
-                    lines,
-                    language,
-                    dependencies,
-                    functions: this.extractFunctions(content, language),
-                    classes: this.extractClasses(content, language),
-                    lastModified: stat.mtime
-                });
+                try {
+                    const content = await fs.readFile(file, 'utf-8');
+                    const language = this.detectLanguage(file);
+                    const lines = content.split('\n').length;
+                    const dependencies = this.extractDependencies(content, language);
+                    structure.push({
+                        name: path.basename(file),
+                        type: 'file',
+                        path: relativePath,
+                        size: stat.size,
+                        lines,
+                        language,
+                        dependencies,
+                        functions: this.extractFunctions(content, language),
+                        classes: this.extractClasses(content, language),
+                        lastModified: stat.mtime
+                    });
+                }
+                catch (readError) {
+                    console.warn(`无法读取文件 ${file}:`, readError);
+                    // 创建一个基本的文件结构
+                    structure.push({
+                        name: path.basename(file),
+                        type: 'file',
+                        path: relativePath,
+                        size: stat.size,
+                        lines: 0,
+                        language: 'unknown',
+                        dependencies: [],
+                        functions: [],
+                        classes: [],
+                        lastModified: stat.mtime
+                    });
+                }
             }
         }
         return structure;
@@ -78,7 +130,13 @@ export class CodeAnalyzer {
             nodir: false,
             ignore: this.config.excludePatterns || ['node_modules', '.git', 'dist', 'build']
         };
-        return await glob(pattern, options);
+        try {
+            return await glob(pattern, options);
+        }
+        catch (error) {
+            console.warn('文件扫描失败:', error);
+            return [];
+        }
     }
     detectLanguage(filePath) {
         const ext = path.extname(filePath).toLowerCase();
@@ -375,80 +433,54 @@ export class CodeAnalyzer {
     }
     async performAIAnalysis(structure, metrics) {
         try {
-            const { OpenAI } = await import('openai');
-            const openai = new OpenAI({
-                apiKey: process.env.OPENAI_API_KEY
+            // 使用增强的AI分析器
+            const aiAnalyzer = new AIAnalyzer(process.env.OPENAI_API_KEY, this.config.aiModel || 'gpt-4');
+            // 执行深度分析
+            const deepAnalysis = await aiAnalyzer.performDeepAnalysis(structure, metrics, {
+                focusAreas: this.config.focusAreas || ['architecture', 'dependencies'],
+                depth: this.config.depth || 3
             });
-            const prompt = `
-你是一位资深的代码架构专家。请基于以下代码库信息，提供深入的分析和洞察：
-
-代码结构概览：
-- 总文件数: ${metrics.totalFiles}
-- 总代码行数: ${metrics.totalLines}
-- 函数总数: ${metrics.totalFunctions}
-- 类总数: ${metrics.totalClasses}
-- 平均复杂度: ${metrics.averageComplexity}
-
-文件分布（按语言）：
-${this.getLanguageDistribution(structure)}
-
-架构特点：
-${this.getArchitectureSummary(structure)}
-
-请提供：
-1. 3-5个关键洞察
-2. 3-5个改进建议
-3. 一段整体架构总结（200字以内）
-
-请用JSON格式返回，包含字段：insights, recommendations, summary
-`;
-            const response = await openai.chat.completions.create({
-                model: "gpt-4",
-                messages: [
-                    {
-                        role: "system",
-                        content: "你是一位资深的软件架构专家，擅长分析代码库结构和提供专业建议。"
-                    },
-                    {
-                        role: "user",
-                        content: prompt
-                    }
-                ],
-                temperature: 0.7,
-                max_tokens: 1000
-            });
-            const content = response.choices[0]?.message?.content || '';
-            try {
-                const parsed = JSON.parse(content);
-                return {
-                    insights: parsed.insights || [],
-                    recommendations: parsed.recommendations || [],
-                    summary: parsed.summary || ''
-                };
-            }
-            catch {
-                // 如果解析失败，进行简单文本处理
-                return {
-                    insights: ['代码库分析完成'],
-                    recommendations: ['继续优化代码结构'],
-                    summary: (content || '').substring(0, 200) + '...'
-                };
-            }
+            // 生成代码质量评分
+            const qualityScore = await aiAnalyzer.generateCodeQualityScore(structure, metrics);
+            // 生成重构建议
+            const refactoringSuggestions = await aiAnalyzer.generateRefactoringSuggestions(structure);
+            return {
+                insights: deepAnalysis.insights,
+                recommendations: [...deepAnalysis.recommendations, ...refactoringSuggestions.immediateActions],
+                summary: deepAnalysis.summary,
+                additionalData: {
+                    qualityScore,
+                    refactoringSuggestions,
+                    riskFactors: deepAnalysis.riskFactors,
+                    improvementSuggestions: deepAnalysis.improvementSuggestions
+                }
+            };
         }
         catch (error) {
-            console.warn('AI分析失败，使用基础分析:', error);
+            console.error('增强AI分析失败，使用基础分析:', error);
+            // 回退到基础AI分析
+            return this.performBasicAIAnalysis(structure, metrics);
+        }
+    }
+    /**
+     * 基础AI分析（备用方案）
+     */
+    async performBasicAIAnalysis(structure, metrics) {
+        try {
+            const aiAnalyzer = new AIAnalyzer(process.env.OPENAI_API_KEY);
+            const basicAnalysis = await aiAnalyzer.performDeepAnalysis(structure, metrics);
             return {
-                insights: [
-                    `代码库包含${metrics.totalFiles}个文件`,
-                    `总代码行数: ${metrics.totalLines}`,
-                    `平均复杂度: ${metrics.averageComplexity.toFixed(2)}`
-                ],
-                recommendations: [
-                    '考虑降低代码复杂度',
-                    '增加单元测试覆盖率',
-                    '优化依赖结构'
-                ],
-                summary: '代码库结构分析完成，建议进一步优化架构设计。'
+                insights: basicAnalysis.insights,
+                recommendations: basicAnalysis.recommendations,
+                summary: basicAnalysis.summary
+            };
+        }
+        catch (error) {
+            console.error('基础AI分析也失败了:', error);
+            return {
+                insights: ['基础分析完成'],
+                recommendations: ['建议完善代码文档和注释'],
+                summary: 'AI分析服务暂时不可用，基础分析已完成。'
             };
         }
     }

@@ -1,4 +1,4 @@
-// Jest global functions are available in ES module mode
+import { describe, it, expect, beforeAll, afterEach } from 'jest';
 import { CodeAnalyzer } from '../src/analyzer.js';
 import { AnalysisConfig } from '../src/types.js';
 import fs from 'fs-extra';
@@ -75,8 +75,8 @@ export function main() {
 
     expect(result.dependencies).toBeDefined();
     if (result.dependencies) {
-      expect(result.dependencies.directDependencies).toBeDefined();
-      expect(result.dependencies.directDependencies.length).toBeGreaterThan(0);
+      expect(result.dependencies.direct).toBeDefined();
+      expect(result.dependencies.direct.length).toBeGreaterThan(0);
     }
   });
 
