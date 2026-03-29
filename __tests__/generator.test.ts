@@ -1,13 +1,12 @@
 import { describe, it, expect, beforeAll, afterEach } from 'jest';
 import { DocumentGenerator } from '../src/generator.js';
-import { AnalysisResult } from '../src/types.js';
+import { AnalysisConfig, AnalysisResult } from '../src/types.js';
 import fs from 'fs-extra';
 import path from 'path';
 
 describe('DocumentGenerator', () => {
   let testDir: string;
   let outputDir: string;
-  let generator: DocumentGenerator;
   let mockResult: AnalysisResult;
 
   beforeAll(async () => {
@@ -24,38 +23,57 @@ describe('DocumentGenerator', () => {
     mockResult = {
       structure: [
         {
-          type: 'file',
           name: 'index.ts',
+          type: 'file',
           path: '/src/index.ts',
           size: 1024,
-          language: 'typescript',
           lines: 50,
-          functions: 2,
-          complexity: 3
+          language: 'typescript',
+          dependencies: [],
+          functions: [
+            {
+              name: 'main',
+              line: 1,
+              parameters: [],
+              returnType: 'string',
+              complexity: 3,
+              isAsync: false,
+              isExported: true,
+              documentation: undefined
+            }
+          ],
+          classes: [],
+          lastModified: new Date()
         },
         {
-          type: 'directory',
           name: 'src',
+          type: 'directory',
           path: '/src',
           size: 2048,
-          files: 3,
-          subdirectories: 1
+          lines: 0,
+          language: 'directory',
+          dependencies: [],
+          lastModified: new Date()
         }
       ],
       dependencies: {
-        directDependencies: [
-          'lodash'
-        ],
+        totalDependencies: 1,
+        directDependencies: ['lodash'],
         indirectDependencies: [],
-        circular: [],
-        outdated: []
+        dependencyGraph: {
+          '/src/index.ts': ['lodash']
+        },
+        circularDependencies: [],
+        outdatedDependencies: []
       },
       metrics: {
         totalFiles: 10,
         totalLines: 500,
+        totalFunctions: 25,
+        totalClasses: 5,
         averageComplexity: 2.5,
         largestFiles: [{ path: 'index.ts', size: 1024, lines: 50 }],
-        averageFileSize: 512
+        mostComplexFunctions: [{ name: 'complexFunc', complexity: 8, path: 'index.ts' }]
       },
       insights: [
         '项目结构清晰，模块化程度良好',
@@ -67,27 +85,39 @@ describe('DocumentGenerator', () => {
       ],
       aiSummary: '这是一个结构良好的TypeScript项目，具有清晰的代码组织。'
     };
-
-    generator = new DocumentGenerator({ projectPath: testDir, outputPath: testDir, 
-      projectPath: testDir,
-      outputPath: outputDir,
-      format: 'markdown'
-    }, mockResult);
   });
 
   it('should generate markdown document correctly', async () => {
+    const config: AnalysisConfig = {
+      projectPath: testDir,
+      outputPath: outputDir,
+      format: 'markdown',
+      includeTests: false,
+      excludePatterns: ['node_modules/**']
+    };
+
+    const generator = new DocumentGenerator(config, mockResult);
     await generator.generate();
     
     const mdFile = path.join(outputDir, 'README.md');
     expect(await fs.pathExists(mdFile)).toBe(true);
     
     const content = await fs.readFile(mdFile, 'utf8');
-    expect(content).toContain('# Code Knowledge Map');
-    expect(content).toContain('## 项目统计');
-    expect(content).toContain('## AI洞察');
+    expect(content).toContain('# 代码库知识地图');
+    expect(content).toContain('## 📊 总体统计');
+    expect(content).toContain('## 🔍 AI洞察');
   });
 
   it('should generate JSON document correctly', async () => {
+    const config: AnalysisConfig = {
+      projectPath: testDir,
+      outputPath: outputDir,
+      format: 'json',
+      includeTests: false,
+      excludePatterns: ['node_modules/**']
+    };
+
+    const generator = new DocumentGenerator(config, mockResult);
     await generator.generate();
     
     const jsonFile = path.join(outputDir, 'knowledge-map.json');
@@ -101,6 +131,15 @@ describe('DocumentGenerator', () => {
   });
 
   it('should generate HTML document correctly', async () => {
+    const config: AnalysisConfig = {
+      projectPath: testDir,
+      outputPath: outputDir,
+      format: 'html',
+      includeTests: false,
+      excludePatterns: ['node_modules/**']
+    };
+
+    const generator = new DocumentGenerator(config, mockResult);
     await generator.generate();
     
     const htmlFile = path.join(outputDir, 'index.html');
@@ -108,45 +147,36 @@ describe('DocumentGenerator', () => {
     
     const content = await fs.readFile(htmlFile, 'utf8');
     expect(content).toContain('<!DOCTYPE html>');
-    expect(content).toContain('<title>Code Knowledge Map</title>');
+    expect(content).toContain('<title>代码库知识地图</title>');
   });
 
   it('should handle output directory creation', async () => {
-    const newGenerator = new DocumentGenerator({ projectPath: testDir, outputPath: testDir, 
-      outputDir: path.join(testDir, 'new-dir'),
-      format: 'markdown'
-    });
-    
-    await generator.generate();');
-    expect(await fs.pathExists(path.join(testDir, 'new-dir'))).toBe(true);
-  });
-
-  it('should handle invalid format gracefully', async () => {
-    const invalidGenerator = new DocumentGenerator({ projectPath: testDir, outputPath: testDir, 
-      outputDir: outputDir,
-      format: 'invalid' as any
-    });
-    
-    // 应该处理无效格式或抛出错误
-    await generator.generate();
-      .rejects.toThrow();
-  });
-
-  it('should generate with custom configuration', async () => {
-    const customGenerator = new DocumentGenerator({ projectPath: testDir, outputPath: testDir, 
-      outputDir: outputDir,
+    const newOutputDir = path.join(testDir, 'new-dir');
+    const config: AnalysisConfig = {
+      projectPath: testDir,
+      outputPath: newOutputDir,
       format: 'markdown',
-      includeMetrics: true,
-      includeInsights: true,
-      maxDepth: 5,
-      theme: 'dark'
-    });
+      includeTests: false,
+      excludePatterns: ['node_modules/**']
+    };
+
+    const generator = new DocumentGenerator(config, mockResult);
+    await generator.generate();
     
-    await generator.generate();');
+    expect(await fs.pathExists(newOutputDir)).toBe(true);
+  });
+
+  it('should throw error for invalid format', async () => {
+    const config: AnalysisConfig = {
+      projectPath: testDir,
+      outputPath: outputDir,
+      format: 'invalid' as any,
+      includeTests: false,
+      excludePatterns: ['node_modules/**']
+    };
+
+    const generator = new DocumentGenerator(config, mockResult);
     
-    const mdFile = path.join(outputDir, 'README.md');
-    const content = await fs.readFile(mdFile, 'utf8');
-    expect(content).toContain('## 项目统计');
-    expect(content).toContain('## AI洞察');
+    await expect(generator.generate()).rejects.toThrow('不支持的格式');
   });
 });
